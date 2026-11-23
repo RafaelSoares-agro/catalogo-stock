@@ -15,7 +15,7 @@ Página pública con el stock de máquinas nuevas y usadas (foto, modelo, año, 
 | Ruta | Para qué |
 |---|---|
 | `/` | Catálogo público. Filtros por nuevo/usado y categoría, búsqueda, orden, ficha por máquina (`/#maquina-<id>`). |
-| `/admin` | Panel con clave: cargar, editar y eliminar máquinas, subir fotos, datos de contacto. |
+| `/admin` | Panel con clave: cargar, editar y eliminar máquinas, subir fotos, datos de contacto y **generar flyers** (botón "Flyer" en cada máquina: imagen 1080×1080 para feed o 1080×1920 para historias, más el texto para la publicación). |
 
 ## API
 

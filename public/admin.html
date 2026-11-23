@@ -15,6 +15,13 @@
   .bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
   .login { max-width: 420px; display: flex; flex-direction: column; gap: 10px; }
   .err { color: var(--red-hi); font-size: 14px; }
+  .fly { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.8); overflow-y: auto; padding: calc(env(safe-area-inset-top, 0px) + 20px) var(--gutter-r) 20px var(--gutter-l); }
+  .fly .box { max-width: 980px; margin: 0 auto; background: var(--bg); border: 1px solid var(--line); padding: 20px; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; position: relative; }
+  .fly canvas { width: 100%; height: auto; display: block; border: 1px solid var(--line); background: var(--bg-2); max-height: 78vh; object-fit: contain; }
+  .fly .side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .fly h3 { margin: 0; font-family: var(--display); font-weight: 700; text-transform: uppercase; font-size: 22px; padding-right: 40px; }
+  .fly textarea { min-height: 150px; }
+  @media (max-width: 760px) { .fly .box { grid-template-columns: minmax(0, 1fr); } }
 </style>
 </head>
 <body>
@@ -42,7 +49,27 @@
     <div id="body" style="display:flex;flex-direction:column;gap:12px;padding-top:16px"></div>
   </div>
 </div>
+<div class="fly" id="fly" hidden role="dialog" aria-modal="true" aria-labelledby="flyTitle">
+  <div class="box">
+    <button class="close" id="flyClose" aria-label="Cerrar">×</button>
+    <div><canvas id="flyCanvas" width="1080" height="1080"></canvas></div>
+    <div class="side">
+      <h3 id="flyTitle">Flyer</h3>
+      <div class="chips" role="group" aria-label="Formato">
+        <button class="chip" data-fmt="cuadrado" aria-pressed="true">Feed 1:1</button>
+        <button class="chip" data-fmt="historia" aria-pressed="false">Historia 9:16</button>
+      </div>
+      <button class="btn primary" id="flyDown">Descargar imagen</button>
+      <button class="btn" id="flyShare" hidden>Compartir</button>
+      <label class="form" style="display:flex;flex-direction:column;gap:6px;font-family:var(--display);font-weight:600;text-transform:uppercase;letter-spacing:.05em;font-size:13px;color:var(--fg-2)">Texto para la publicación
+        <textarea class="field" id="flyText" style="font-family:var(--body);text-transform:none;letter-spacing:0;font-size:14px;color:var(--fg)"></textarea></label>
+      <button class="btn ghost" id="flyCopy">Copiar texto</button>
+      <span class="muted" id="flyNote"></span>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast" hidden></div>
+<script src="/flyer.js"></script>
 
 <script>
 (function () {
@@ -100,12 +127,13 @@
         return '<div class="adm-row"><div class="th">' + thumb(m) + '</div><div><b>' + esc(m.modelo) + ' · ' + esc(m.anio || "") + '</b><span class="muted">' + esc(m.ref) + ' · ' + esc(m.tipo) + ' · ' + esc(ESTADOS[m.estado]) + ' · ' + (m.precio ? esc(m.moneda) + ' ' + num(m.precio) : 'Consultar') + '</span></div>' +
           '<div class="acts">' + (confirmDel === m.id
             ? '<span class="confirm">¿Eliminar?<button class="btn primary" data-del-yes="' + esc(m.id) + '">Sí</button><button class="btn" data-del-no="1">No</button></span>'
-            : '<button class="btn" data-edit="' + esc(m.id) + '">Editar</button><button class="btn ghost" data-del="' + esc(m.id) + '">Eliminar</button>') + '</div></div>';
+            : '<button class="btn" data-flyer="' + esc(m.id) + '">Flyer</button><button class="btn" data-edit="' + esc(m.id) + '">Editar</button><button class="btn ghost" data-del="' + esc(m.id) + '">Eliminar</button>') + '</div></div>';
       }).join("") : '<div class="empty"><b>Sin máquinas</b>Cargue la primera con “Nueva máquina”.</div>');
   }
   $("body").addEventListener("click", function (e) {
     var t = e.target;
     if (t.id === "addBtn") { editing = { tipo: "Usado", categoria: "Tractor", modelo: "", ref: "", anio: new Date().getFullYear(), horas: 0, precio: 0, moneda: "USD", estado: "disponible", destacado: false, fotos: [] }; return render(); }
+    if (t.dataset.flyer) { return abrirFlyer(lista.find(function (x) { return x.id === t.dataset.flyer; })); }
     if (t.dataset.edit) { editing = JSON.parse(JSON.stringify(lista.find(function (x) { return x.id === t.dataset.edit; }))); return render(); }
     if (t.dataset.del) { confirmDel = t.dataset.del; return render(); }
     if (t.dataset.delNo) { confirmDel = null; return render(); }
@@ -178,6 +206,60 @@
       if (t.dataset.cover != null) { m.fotos.unshift(m.fotos.splice(+t.dataset.cover, 1)[0]); render(); }
     });
   }
+
+  // ---------- Flyers ----------
+  var flyM = null, flyFmt = "cuadrado";
+  function textoPost(m) {
+    var l = [(m.tipo === "Nuevo" ? "NUEVO" : "USADO") + " | Case IH " + m.modelo + (m.anio ? " " + m.anio : "")];
+    if (m.anio) l.push("Año: " + m.anio);
+    if (m.horas) l.push("Horas: " + num(m.horas) + " h");
+    l.push(m.precio ? "Precio: " + (m.moneda || "USD") + " " + num(m.precio) : "Precio: consultar");
+    if (config.whatsapp) l.push("", "Consultas por WhatsApp: " + config.whatsapp);
+    l.push("Ver más en " + location.origin + "/#maquina-" + m.id);
+    l.push("", "#CaseIH #" + String(config.empresa || "HPetersen").replace(/[^A-Za-z0-9]/g, "") + " #" + (m.categoria || "Maquinaria") + " #Paraguay");
+    return l.join("\n");
+  }
+  function dibujarFlyer() {
+    $("flyNote").textContent = "Generando…";
+    return Flyer.render($("flyCanvas"), flyM, config, flyFmt).then(function () {
+      $("flyNote").textContent = (flyM.fotos && flyM.fotos.length ? "" : "La máquina no tiene foto: el flyer usa un fondo provisorio. ") + (config.whatsapp ? "" : "Falta el WhatsApp en Datos de contacto.");
+    });
+  }
+  function abrirFlyer(m) {
+    flyM = m; $("flyTitle").textContent = "Flyer · " + m.modelo; $("flyText").value = textoPost(m);
+    $("fly").hidden = false; document.body.style.overflow = "hidden"; dibujarFlyer();
+  }
+  function cerrarFlyer() { $("fly").hidden = true; document.body.style.overflow = ""; }
+  $("flyClose").addEventListener("click", cerrarFlyer);
+  $("fly").addEventListener("click", function (e) {
+    if (e.target === $("fly")) return cerrarFlyer();
+    var b = e.target.closest("[data-fmt]"); if (!b) return;
+    flyFmt = b.dataset.fmt;
+    document.querySelectorAll("[data-fmt]").forEach(function (x) { x.setAttribute("aria-pressed", x === b); });
+    dibujarFlyer();
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !$("fly").hidden) cerrarFlyer(); });
+  function flyBlob() { return new Promise(function (res) { $("flyCanvas").toBlob(res, "image/png"); }); }
+  $("flyDown").addEventListener("click", function () {
+    flyBlob().then(function (b) {
+      var a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = Flyer.nombreArchivo(flyM, flyFmt);
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+      toast("Flyer descargado.");
+    });
+  });
+  if (navigator.canShare) $("flyShare").hidden = false;
+  $("flyShare").addEventListener("click", function () {
+    flyBlob().then(function (b) {
+      var f = new File([b], Flyer.nombreArchivo(flyM, flyFmt), { type: "image/png" });
+      var d = { files: [f], text: $("flyText").value };
+      if (!navigator.canShare(d)) { toast("Este dispositivo no permite compartir imágenes. Use Descargar."); return; }
+      navigator.share(d).catch(function () { });
+    });
+  });
+  $("flyCopy").addEventListener("click", function () {
+    var t = $("flyText").value;
+    (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { toast("Texto copiado."); }, function () { $("flyText").select(); toast("Seleccioné el texto: cópielo con Ctrl+C."); });
+  });
 
   function resize(file) {
     return new Promise(function (res, rej) {
