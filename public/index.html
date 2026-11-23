@@ -11,6 +11,20 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700&family=Barlow:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="/styles.css">
+<style>
+  .zona-sheet { max-width: 760px; padding: 28px 24px 24px; display: flex; flex-direction: column; gap: 18px; }
+  .zona-sheet h2 { margin: 0; padding-right: 48px; font-family: var(--display); font-weight: 700; text-transform: uppercase; font-size: 26px; letter-spacing: .03em; text-wrap: balance; }
+  .zona-sheet .ctx { color: var(--fg-2); font-size: 14px; margin: -8px 0 0; }
+  .zona-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: 8px; }
+  .zona { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); background: var(--bg-2); text-decoration: none; color: var(--fg); border-radius: 2px; min-width: 0; }
+  .zona:hover, .zona:focus-visible { border-color: var(--red-hi); }
+  .zona b { font-family: var(--display); font-weight: 600; font-size: 18px; text-transform: uppercase; letter-spacing: .03em; }
+  .zona span { font-size: 13px; color: var(--fg-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .zona-region { font-family: var(--display); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; font-size: 14px; color: var(--red-hi); margin: 4px 0 -6px; }
+  .zona-saved { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; padding: 14px; border: 1px solid var(--line); border-left: 4px solid var(--red); background: var(--bg-2); }
+  .zona-saved p { margin: 0; color: var(--fg-2); font-size: 14px; }
+  .zona-saved p b { color: var(--fg); font-family: var(--display); font-size: 20px; text-transform: uppercase; display: block; }
+</style>
 </head>
 <body>
 <header class="top">
@@ -92,6 +106,9 @@
   <div class="sheet" id="detailSheet"></div>
 </div>
 
+<div class="overlay" id="zonaOv" hidden role="dialog" aria-modal="true" aria-labelledby="zTitle">
+  <div class="sheet zona-sheet" id="zonaSheet"></div>
+</div>
 <div class="toast" id="toast" hidden></div>
 
 <script>
@@ -126,7 +143,48 @@
     return p ? '<img src="' + esc(photoUrl(p)) + '" alt="' + esc(m.categoria + " " + m.modelo) + '" loading="lazy">' : placeholder(m.categoria);
   }
   function waNumber() { return String(data.config.whatsapp || "").replace(/\D/g, ""); }
-  function waLink(text) { var n = waNumber(); return n ? "https://wa.me/" + n + "?text=" + encodeURIComponent(text) : ""; }
+  function waLink(text, numero) { var n = String(numero || data.config.whatsapp || "").replace(/\D/g, ""); return n ? "https://wa.me/" + n + "?text=" + encodeURIComponent(text) : ""; }
+  var ORIENTAL = ["Asunción", "Central", "Concepción", "San Pedro", "Cordillera", "Guairá", "Caaguazú", "Caazapá", "Itapúa", "Misiones", "Paraguarí", "Alto Paraná", "Ñeembucú", "Amambay", "Canindeyú"];
+  var CHACO = ["Presidente Hayes", "Boquerón", "Alto Paraguay"];
+  function vendedores() { return (data.config.vendedores || []).filter(function (v) { return String(v.whatsapp || "").replace(/\D/g, "").length >= 8; }); }
+  function contactoPara(zona) {
+    var v = vendedores().find(function (x) { return (x.zonas || []).indexOf(zona) >= 0; });
+    return v ? { nombre: v.nombre, numero: v.whatsapp } : (waNumber() ? { nombre: "Oficina central", numero: data.config.whatsapp } : null);
+  }
+  function hayContacto() { return !!(waNumber() || vendedores().length); }
+  function zonaGuardada() { try { return localStorage.getItem("hp_zona") || ""; } catch (e) { return ""; } }
+  function guardarZona(z) { try { localStorage.setItem("hp_zona", z); } catch (e) { } }
+  var GENERAL = "Hola, quiero consultar por maquinaria Case IH del catálogo web.";
+  // Botón de WhatsApp: con vendedores abre el selector de zona; sin vendedores va directo al número central.
+  function waButton(m, label, extra) {
+    if (!hayContacto()) return '<span class="muted">WhatsApp pendiente</span>';
+    if (!vendedores().length) return '<a class="btn primary wa' + (extra || "") + '" href="' + esc(waLink(m ? machineMsg(m) : GENERAL)) + '" target="_blank" rel="noopener">' + label + '</a>';
+    return '<button type="button" class="btn primary wa' + (extra || "") + '" data-wa="' + esc(m ? m.id : "") + '">' + label + '</button>';
+  }
+  var zonaMaq = null;
+  function openZona(id) {
+    zonaMaq = id ? data.maquinas.find(function (x) { return x.id === id; }) : null;
+    var msg = zonaMaq ? machineMsg(zonaMaq) : GENERAL;
+    function item(z) {
+      var c = contactoPara(z); if (!c) return "";
+      return '<a class="zona" href="' + esc(waLink(msg, c.numero)) + '" target="_blank" rel="noopener" data-zona="' + esc(z) + '"><b>' + esc(z) + '</b><span>' + esc(c.nombre) + '</span></a>';
+    }
+    var saved = zonaGuardada(), cs = saved && contactoPara(saved);
+    $("zonaSheet").innerHTML = '<button class="close" id="zClose" aria-label="Cerrar">×</button>' +
+      '<h2 id="zTitle">¿Desde qué departamento nos escribe?</h2>' +
+      '<p class="ctx">' + (zonaMaq ? 'Consulta por ' + esc(zonaMaq.modelo) + ' ' + esc(zonaMaq.anio || "") + '. ' : '') + 'Le responde el vendedor de su zona por WhatsApp.</p>' +
+      (cs ? '<div class="zona-saved"><p>Su zona: ' + esc(saved) + '<b>' + esc(cs.nombre) + '</b></p><a class="btn primary" data-zona="' + esc(saved) + '" href="' + esc(waLink(msg, cs.numero)) + '" target="_blank" rel="noopener">Escribir por WhatsApp <span class="chev" aria-hidden="true"></span></a></div>' : '') +
+      '<div class="zona-region">Región Oriental</div><div class="zona-grid">' + ORIENTAL.map(item).join("") + '</div>' +
+      '<div class="zona-region">Región Occidental (Chaco)</div><div class="zona-grid">' + CHACO.map(item).join("") + '</div>';
+    $("zonaOv").hidden = false; document.body.style.overflow = "hidden";
+    var first = $("zonaSheet").querySelector(".zona-saved a, .zona"); if (first) first.focus();
+  }
+  function closeZona() { $("zonaOv").hidden = true; document.body.style.overflow = $("detailOv").hidden ? "" : "hidden"; }
+  $("zonaOv").addEventListener("click", function (e) {
+    if (e.target === $("zonaOv") || e.target.id === "zClose") return closeZona();
+    var a = e.target.closest("[data-zona]"); if (a) { guardarZona(a.dataset.zona); setTimeout(closeZona, 300); }
+  });
+  document.addEventListener("click", function (e) { var b = e.target.closest("button[data-wa]"); if (b) { e.stopPropagation(); openZona(b.dataset.wa); } }, true);
   function machineMsg(m) { return "Hola, me interesa el Case IH " + m.modelo + " " + m.anio + ((m.tipo || "Usado") === "Nuevo" ? " nuevo" : " usado") + " (ref. " + m.ref + ") del catálogo web. ¿Sigue disponible?"; }
 
   // ---------- Catálogo ----------
@@ -176,7 +234,7 @@
   function priceHtml(m) { return m.precio ? '<small>' + esc(m.moneda || "USD") + '</small>' + num(m.precio) : 'Consultar'; }
   function hoursTxt(m) { return m.horas ? num(m.horas) + " h" : (m.tipo === "Nuevo" ? "0 h" : "–"); }
   function card(m) {
-    var tipo = m.tipo || "Usado", link = waLink(machineMsg(m));
+    var tipo = m.tipo || "Usado";
     return '<article class="card" tabindex="0" role="button" data-id="' + esc(m.id) + '" aria-label="Ver ' + esc(m.modelo) + '">' +
       '<div class="ph">' + imgOrPh(m) + '<span class="badge ' + (tipo === "Nuevo" ? "nuevo" : "usado") + '">' + tipo + '</span>' +
       (m.estado === "reservado" ? '<span class="feat" style="background:var(--warn);color:#1a1200">Reservado</span>' : '') +
@@ -185,7 +243,7 @@
       '<h3>' + esc(m.modelo) + '</h3>' +
       '<dl class="specs two"><div><dt>Año</dt><dd>' + esc(m.anio || "–") + '</dd></div><div><dt>Horas</dt><dd>' + hoursTxt(m) + '</dd></div></dl>' +
       '<div class="foot"><span class="price">' + priceHtml(m) + '</span>' +
-      (link ? '<a class="btn primary wa" href="' + esc(link) + '" target="_blank" rel="noopener">WhatsApp</a>' : '<span class="muted">WhatsApp pendiente</span>') +
+      waButton(m, "WhatsApp") +
       '</div></div></article>';
   }
   function renderGrid() {
@@ -205,7 +263,8 @@
     if (c.whatsapp) parts.push("WhatsApp: " + esc(c.whatsapp));
     if (c.telefono) parts.push("Teléfono: " + esc(c.telefono));
     if (c.email) parts.push("Correo: " + esc(c.email));
-    $("ftContact").innerHTML = parts.length ? parts.join("<br>") : '<span class="muted">Datos de contacto pendientes de cargar.</span>';
+    $("ftContact").innerHTML = (parts.length ? parts.join("<br>") : '<span class="muted">Datos de contacto pendientes de cargar.</span>') +
+      (vendedores().length ? '<br><br>' + waButton(null, "Hablar con el vendedor de mi zona") : '');
   }
   function renderAll() { renderBrand(); renderStats(); renderTipos(); renderChips(); renderGrid(); }
 
@@ -216,7 +275,6 @@
     if (!m) return;
     curPhoto = 0;
     var spec = [["Año", m.anio], ["Horas", hoursTxt(m)], ["Condición", m.tipo || "Usado"]].filter(function (r) { return r[1]; });
-    var link = waLink(machineMsg(m));
     var fotos = m.fotos || [];
     $("detailSheet").innerHTML =
       '<button class="close" id="dClose" aria-label="Cerrar">×</button>' +
@@ -228,8 +286,8 @@
       '<div class="price" style="font-size:36px">' + priceHtml(m) + '</div>' +
       '<dl class="spec-list">' + spec.map(function (r) { return '<div><dt>' + r[0] + '</dt><dd>' + esc(r[1]) + '</dd></div>'; }).join("") + '</dl>' +
       '<div class="contact-box">' +
-      (link ? '<div class="row"><a class="btn primary" href="' + esc(link) + '" target="_blank" rel="noopener">Consultar por WhatsApp <span class="chev" aria-hidden="true"></span></a></div>' +
-        '<div class="copyline">WhatsApp: <code>' + esc(data.config.whatsapp) + '</code><button class="linkbtn" data-copy="' + esc(data.config.whatsapp) + '">Copiar número</button></div>'
+      (hayContacto() ? '<div class="row">' + waButton(m, 'Consultar por WhatsApp <span class="chev" aria-hidden="true"></span>') + '</div>' +
+        (vendedores().length ? '<div class="muted">Elija su departamento y le responde el vendedor de su zona.</div>' : '<div class="copyline">WhatsApp: <code>' + esc(data.config.whatsapp) + '</code><button class="linkbtn" data-copy="' + esc(data.config.whatsapp) + '">Copiar número</button></div>')
         : '<div class="muted">El número de WhatsApp todavía no está cargado. Se agrega desde Administrar, en Datos de contacto.</div>') +
       '<div class="copyline">Mensaje sugerido:<button class="linkbtn" data-copy="' + esc(machineMsg(m)) + '">Copiar mensaje</button></div>' +
       '</div></div></div>';
@@ -267,7 +325,7 @@
   $("tipos").addEventListener("click", function (e) { var b = e.target.closest(".chip"); if (!b) return; state.tipo = b.dataset.tipo; renderTipos(); renderChips(); renderGrid(); });
   $("grid").addEventListener("click", function (e) { if (e.target.closest(".wa")) return; var c = e.target.closest(".card"); if (c) openDetail(c.dataset.id); });
   $("grid").addEventListener("keydown", function (e) { if ((e.key === "Enter" || e.key === " ") && e.target.classList.contains("card")) { e.preventDefault(); openDetail(e.target.dataset.id); } });
-  document.addEventListener("keydown", function (e) { if (e.key === "Escape") { if (!$("detailOv").hidden) closeDetail(); } });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") { if (!$("zonaOv").hidden) closeZona(); else if (!$("detailOv").hidden) closeDetail(); } });
   $("brandLink").addEventListener("click", function (e) { e.preventDefault(); window.scrollTo(0, 0); });
 
   // ---------- Carga ----------

@@ -17,6 +17,10 @@ Página pública con el stock de máquinas nuevas y usadas (foto, modelo, año, 
 | `/` | Catálogo público. Filtros por nuevo/usado y categoría, búsqueda, orden, ficha por máquina (`/#maquina-<id>`). |
 | `/admin` | Panel con clave: cargar, editar y eliminar máquinas, subir fotos, datos de contacto y **generar flyers** (botón "Flyer" en cada máquina: imagen 1080×1080 para feed o 1080×1920 para historias, más el texto para la publicación). |
 
+## WhatsApp por zona
+
+En `/admin → Vendedores` se carga cada vendedor con su WhatsApp y se marcan los departamentos que atiende (cada departamento tiene un solo vendedor). En el catálogo, el botón WhatsApp abre la lista de departamentos y el cliente le escribe al vendedor de su zona, con el mensaje de la máquina ya escrito. La zona elegida se recuerda en ese navegador. Los departamentos sin vendedor van al WhatsApp central de *Datos de contacto*. Sin vendedores cargados, el botón va directo al número central.
+
 ## API
 
 Las lecturas son públicas. Las escrituras llevan el encabezado `Authorization: Bearer <ADMIN_TOKEN>`.
@@ -33,7 +37,7 @@ Las lecturas son públicas. Las escrituras llevan el encabezado `Authorization: 
 | PUT | `/api/maquinas` | **Sincroniza el stock completo** desde el portal de stock (ver abajo). |
 | POST | `/api/fotos` | Sube una foto (cuerpo = imagen JPG/PNG/WebP, máx. 5 MB). Devuelve `{ "url": "/api/fotos/..." }`. |
 | GET | `/api/fotos/:key` | Devuelve la foto. |
-| GET / PUT | `/api/config` | Empresa, subtítulo, WhatsApp, teléfono, correo y aviso de portada. |
+| GET / PUT | `/api/config` | Empresa, subtítulo, WhatsApp central, teléfono, correo, aviso de portada y `vendedores` (`[{nombre, whatsapp, zonas: [departamentos]}]`). |
 
 ### Campos de una máquina
 

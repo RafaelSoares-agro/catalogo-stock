@@ -4,6 +4,11 @@ import { getStore } from "@netlify/blobs";
 export const CATEGORIAS = ["Tractor", "Cosechadora", "Pulverizadora", "Sembradora", "Otro"];
 export const TIPOS = ["Usado", "Nuevo"];
 export const ESTADOS = ["disponible", "reservado", "vendido"];
+// Departamentos de Paraguay (más Asunción) para asignar vendedores por zona.
+export const DEPARTAMENTOS = [
+  "Asunción", "Concepción", "San Pedro", "Cordillera", "Guairá", "Caaguazú", "Caazapá", "Itapúa", "Misiones",
+  "Paraguarí", "Alto Paraná", "Central", "Ñeembucú", "Amambay", "Canindeyú", "Presidente Hayes", "Boquerón", "Alto Paraguay",
+];
 
 // Campos que ve el público. Todo lo demás queda solo para el panel.
 const PUBLICOS = ["id", "ref", "tipo", "categoria", "modelo", "anio", "horas", "precio", "moneda", "estado", "fotos", "destacado", "actualizado"];
@@ -29,6 +34,7 @@ export async function leerConfig() {
     telefono: "",
     email: "",
     aviso: "",
+    vendedores: [],
   };
 }
 export async function guardarConfig(cfg) {
@@ -107,4 +113,21 @@ export function normalizar(entrada, previo = {}) {
 
 export function nuevoId() {
   return "m" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+// Valida la lista de vendedores: [{ id, nombre, whatsapp, zonas: [departamentos] }].
+export function normalizarVendedores(lista) {
+  if (!Array.isArray(lista)) return { ok: false, errores: ["vendedores debe ser una lista"] };
+  if (lista.length > 100) return { ok: false, errores: ["máximo 100 vendedores"] };
+  const errores = [], valor = [];
+  lista.forEach((v, i) => {
+    const nombre = String(v?.nombre || "").trim().slice(0, 60);
+    const whatsapp = String(v?.whatsapp || "").trim().slice(0, 30);
+    const digitos = whatsapp.replace(/\D/g, "");
+    if (!nombre) errores.push(`vendedor ${i + 1}: falta el nombre`);
+    if (digitos.length < 8) errores.push(`vendedor ${i + 1}: el WhatsApp debe tener código de país y número`);
+    const zonas = [...new Set((Array.isArray(v?.zonas) ? v.zonas : []).filter((z) => DEPARTAMENTOS.includes(z)))];
+    valor.push({ id: String(v?.id || "") || "v" + Math.random().toString(36).slice(2, 9), nombre, whatsapp, zonas });
+  });
+  return errores.length ? { ok: false, errores } : { ok: true, valor };
 }

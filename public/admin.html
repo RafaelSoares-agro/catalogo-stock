@@ -15,6 +15,13 @@
   .bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
   .login { max-width: 420px; display: flex; flex-direction: column; gap: 10px; }
   .err { color: var(--red-hi); font-size: 14px; }
+  .vend { border: 1px solid var(--line); background: var(--bg-2); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .vend .top2 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) auto; gap: 10px; align-items: end; }
+  .deps { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 12px; }
+  .deps label { display: flex; gap: 6px; align-items: center; font-size: 14px; color: var(--fg-2); }
+  .deps label.taken { opacity: .55; }
+  .cover-sum { font-size: 14px; color: var(--fg-2); border-left: 3px solid var(--warn); padding: 6px 10px; background: rgba(224,162,43,.07); }
+  @media (max-width: 560px) { .vend .top2 { grid-template-columns: minmax(0,1fr); } }
   .fly { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.8); overflow-y: auto; padding: calc(env(safe-area-inset-top, 0px) + 20px) var(--gutter-r) 20px var(--gutter-l); }
   .fly .box { max-width: 980px; margin: 0 auto; background: var(--bg); border: 1px solid var(--line); padding: 20px; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; position: relative; }
   .fly canvas { width: 100%; height: auto; display: block; border: 1px solid var(--line); background: var(--bg-2); max-height: 78vh; object-fit: contain; }
@@ -44,6 +51,7 @@
   <div id="panel" hidden>
     <div class="tabs" role="tablist">
       <button role="tab" id="tabList" aria-selected="true">Máquinas</button>
+      <button role="tab" id="tabVend" aria-selected="false">Vendedores</button>
       <button role="tab" id="tabConf" aria-selected="false">Datos de contacto</button>
     </div>
     <div id="body" style="display:flex;flex-direction:column;gap:12px;padding-top:16px"></div>
@@ -113,11 +121,13 @@
 
   $("tabList").addEventListener("click", function () { tab = "list"; editing = null; render(); });
   $("tabConf").addEventListener("click", function () { tab = "conf"; editing = null; render(); });
+  $("tabVend").addEventListener("click", function () { tab = "vend"; editing = null; vendDraft = null; render(); });
 
   function thumb(m) { return m.fotos && m.fotos[0] ? '<img src="' + esc(m.fotos[0]) + '" alt="">' : ""; }
 
   function render() {
-    $("tabList").setAttribute("aria-selected", tab === "list"); $("tabConf").setAttribute("aria-selected", tab === "conf");
+    $("tabList").setAttribute("aria-selected", tab === "list"); $("tabConf").setAttribute("aria-selected", tab === "conf"); $("tabVend").setAttribute("aria-selected", tab === "vend");
+    if (tab === "vend") return renderVend($("body"));
     var b = $("body");
     if (tab === "conf") return renderConf(b);
     if (editing) return renderEditor(b);
@@ -139,6 +149,49 @@
     if (t.dataset.delNo) { confirmDel = null; return render(); }
     if (t.dataset.delYes) {
       api("DELETE", "/api/maquinas/" + encodeURIComponent(t.dataset.delYes)).then(function () { confirmDel = null; toast("Máquina eliminada."); return load(); }, function (err) { toast(err.message); });
+    }
+  });
+
+  // ---------- Vendedores por zona ----------
+  var vendDraft = null;
+  function renderVend(b) {
+    if (!vendDraft) vendDraft = JSON.parse(JSON.stringify(config.vendedores || []));
+    var deps = config.departamentos || [];
+    var dueño = {}; vendDraft.forEach(function (v, i) { (v.zonas || []).forEach(function (z) { if (dueño[z] === undefined) dueño[z] = i; }); });
+    var libres = deps.filter(function (d) { return dueño[d] === undefined; });
+    b.innerHTML = '<p class="muted" style="margin:0">Cuando un cliente toca WhatsApp en el catálogo, elige su departamento y le escribe al vendedor de esa zona. Un departamento sin vendedor va al WhatsApp central de Datos de contacto' + (config.whatsapp ? ' (' + esc(config.whatsapp) + ')' : ', que todavía no está cargado') + '.</p>' +
+      vendDraft.map(function (v, i) {
+        return '<div class="vend" data-i="' + i + '"><div class="top2 form">' +
+          '<label>Nombre<input class="field" data-f="nombre" value="' + esc(v.nombre) + '" placeholder="Ej.: Juan Benítez"></label>' +
+          '<label>WhatsApp<input class="field" data-f="whatsapp" inputmode="tel" value="' + esc(v.whatsapp) + '" placeholder="+595 981 123 456"></label>' +
+          '<button class="btn ghost" type="button" data-quitar="' + i + '">Quitar</button></div>' +
+          '<div class="deps">' + deps.map(function (d) {
+            var mio = (v.zonas || []).indexOf(d) >= 0, otro = !mio && dueño[d] !== undefined;
+            return '<label class="' + (otro ? "taken" : "") + '" title="' + (otro ? "Ya asignado a " + esc(vendDraft[dueño[d]].nombre || "otro vendedor") : "") + '"><input type="checkbox" data-zona="' + esc(d) + '"' + (mio ? " checked" : "") + '> ' + esc(d) + '</label>';
+          }).join("") + '</div></div>';
+      }).join("") +
+      '<div class="cover-sum">' + (libres.length ? 'Sin vendedor (van al número central): ' + libres.map(esc).join(", ") : 'Todos los departamentos tienen vendedor.') + '</div>' +
+      '<div class="bar"><button class="btn" id="vAdd">+ Agregar vendedor</button><button class="btn primary" id="vSave">Guardar vendedores</button></div>';
+  }
+  $("body").addEventListener("input", function (e) {
+    if (tab !== "vend") return; var f = e.target.dataset.f; if (!f) return;
+    vendDraft[+e.target.closest(".vend").dataset.i][f] = e.target.value;
+  });
+  $("body").addEventListener("change", function (e) {
+    if (tab !== "vend" || !e.target.dataset.zona) return;
+    var v = vendDraft[+e.target.closest(".vend").dataset.i], z = e.target.dataset.zona;
+    v.zonas = (v.zonas || []).filter(function (x) { return x !== z; });
+    if (e.target.checked) { vendDraft.forEach(function (o) { o.zonas = (o.zonas || []).filter(function (x) { return x !== z; }); }); v.zonas.push(z); }
+    renderVend($("body"));
+  });
+  $("body").addEventListener("click", function (e) {
+    if (tab !== "vend") return; var t = e.target;
+    if (t.id === "vAdd") { vendDraft.push({ nombre: "", whatsapp: "", zonas: [] }); renderVend($("body")); var ins = $("body").querySelectorAll('.vend:last-of-type input[data-f="nombre"]'); if (ins[0]) ins[0].focus(); }
+    if (t.dataset.quitar) { vendDraft.splice(+t.dataset.quitar, 1); renderVend($("body")); }
+    if (t.id === "vSave") {
+      t.disabled = true;
+      api("PUT", "/api/config", { vendedores: vendDraft }).then(function (d) { config = d; vendDraft = null; renderVend($("body")); toast("Vendedores guardados. Ya se usan en el catálogo."); },
+        function (err) { toast(err.message); t.disabled = false; });
     }
   });
 
@@ -215,6 +268,7 @@
     if (m.horas) l.push("Horas: " + num(m.horas) + " h");
     l.push(m.precio ? "Precio: " + (m.moneda || "USD") + " " + num(m.precio) : "Precio: consultar");
     if (config.whatsapp) l.push("", "Consultas por WhatsApp: " + config.whatsapp);
+    if ((config.vendedores || []).length) l.push("O escriba al vendedor de su zona desde la web.");
     l.push("Ver más en " + location.origin + "/#maquina-" + m.id);
     l.push("", "#CaseIH #" + String(config.empresa || "HPetersen").replace(/[^A-Za-z0-9]/g, "") + " #" + (m.categoria || "Maquinaria") + " #Paraguay");
     return l.join("\n");

@@ -81,4 +81,12 @@ await t("config pública y edición con token", async () => {
   const r = await call(conf, "PUT", "/api/config", { body: { whatsapp: "+595 981 000 000", otro: "x" }, headers: H });
   assert.equal(r.body.whatsapp, "+595 981 000 000"); assert.equal(r.body.otro, undefined);
 });
+await t("vendedores por zona", async () => {
+  const bad = await call(conf, "PUT", "/api/config", { body: { vendedores: [{ nombre: "", whatsapp: "12" }] }, headers: H });
+  assert.equal(bad.status, 400); assert.equal(bad.body.detalle.length, 2);
+  const r = await call(conf, "PUT", "/api/config", { body: { vendedores: [{ nombre: "Ana", whatsapp: "+595 981 111 222", zonas: ["Itapúa", "Marte", "Itapúa"] }] }, headers: H });
+  assert.equal(r.status, 200); assert.deepEqual(r.body.vendedores[0].zonas, ["Itapúa"]); assert.ok(r.body.vendedores[0].id);
+  const g = (await call(conf, "GET", "/api/config")).body;
+  assert.equal(g.vendedores.length, 1); assert.equal(g.departamentos.length, 18); assert.equal(g.whatsapp, "+595 981 000 000");
+});
 console.log(`\n${ok} pruebas OK`);
