@@ -16,7 +16,7 @@
   .zona-sheet h2 { margin: 0; padding-right: 48px; font-family: var(--display); font-weight: 700; text-transform: uppercase; font-size: 26px; letter-spacing: .03em; text-wrap: balance; }
   .zona-sheet .ctx { color: var(--fg-2); font-size: 14px; margin: -8px 0 0; }
   .zona-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr)); gap: 8px; }
-  .zona { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); background: var(--bg-2); text-decoration: none; color: var(--fg); border-radius: 2px; min-width: 0; }
+  .zona { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; text-align: left; font: inherit; cursor: pointer; border: 1px solid var(--line); background: var(--bg-2); text-decoration: none; color: var(--fg); border-radius: 2px; min-width: 0; }
   .zona:hover, .zona:focus-visible { border-color: var(--red-hi); }
   .zona b { font-family: var(--display); font-weight: 600; font-size: 18px; text-transform: uppercase; letter-spacing: .03em; }
   .zona span { font-size: 13px; color: var(--fg-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -147,13 +147,16 @@
   var ORIENTAL = ["Asunción", "Central", "Concepción", "San Pedro", "Cordillera", "Guairá", "Caaguazú", "Caazapá", "Itapúa", "Misiones", "Paraguarí", "Alto Paraná", "Ñeembucú", "Amambay", "Canindeyú"];
   var CHACO = ["Presidente Hayes", "Boquerón", "Alto Paraguay"];
   function vendedores() { return (data.config.vendedores || []).filter(function (v) { return String(v.whatsapp || "").replace(/\D/g, "").length >= 8; }); }
-  function contactoPara(zona) {
-    var v = vendedores().find(function (x) { return (x.zonas || []).indexOf(zona) >= 0; });
-    return v ? { nombre: v.nombre, numero: v.whatsapp } : (waNumber() ? { nombre: "Oficina central", numero: data.config.whatsapp } : null);
+  // Vendedores de un departamento (puede haber varios). Sin vendedores, la oficina central.
+  function contactosPara(zona) {
+    var vs = vendedores().filter(function (x) { return (x.zonas || []).indexOf(zona) >= 0; })
+      .map(function (v) { return { id: v.id, nombre: v.nombre, numero: v.whatsapp }; });
+    if (vs.length) return vs;
+    return waNumber() ? [{ id: "central", nombre: "Oficina central", numero: data.config.whatsapp }] : [];
   }
   function hayContacto() { return !!(waNumber() || vendedores().length); }
-  function zonaGuardada() { try { return localStorage.getItem("hp_zona") || ""; } catch (e) { return ""; } }
-  function guardarZona(z) { try { localStorage.setItem("hp_zona", z); } catch (e) { } }
+  function leer(k) { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } }
+  function guardar(k, v) { try { localStorage.setItem(k, v); } catch (e) { } }
   var GENERAL = "Hola, quiero consultar por maquinaria Case IH del catálogo web.";
   // Botón de WhatsApp: con vendedores abre el selector de zona; sin vendedores va directo al número central.
   function waButton(m, label, extra) {
@@ -162,27 +165,47 @@
     return '<button type="button" class="btn primary wa' + (extra || "") + '" data-wa="' + esc(m ? m.id : "") + '">' + label + '</button>';
   }
   var zonaMaq = null;
+  function zonaMsg() { return zonaMaq ? machineMsg(zonaMaq) : GENERAL; }
+  function waAnchor(z, c, cls, inner) {
+    return '<a class="' + cls + '" href="' + esc(waLink(zonaMsg(), c.numero)) + '" target="_blank" rel="noopener" data-zona="' + esc(z) + '" data-vend="' + esc(c.id) + '">' + inner + '</a>';
+  }
+  function cabecera(titulo) {
+    return '<button class="close" id="zClose" aria-label="Cerrar">×</button><h2 id="zTitle">' + titulo + '</h2>' +
+      '<p class="ctx">' + (zonaMaq ? 'Consulta por ' + esc(zonaMaq.modelo) + ' ' + esc(zonaMaq.anio || "") + '. ' : '') + 'Le responde un vendedor de su zona por WhatsApp.</p>';
+  }
+  function mostrar() { $("zonaOv").hidden = false; document.body.style.overflow = "hidden"; var f = $("zonaSheet").querySelector(".zona-saved a, .zona-saved button, .zona"); if (f) f.focus(); }
   function openZona(id) {
     zonaMaq = id ? data.maquinas.find(function (x) { return x.id === id; }) : null;
-    var msg = zonaMaq ? machineMsg(zonaMaq) : GENERAL;
     function item(z) {
-      var c = contactoPara(z); if (!c) return "";
-      return '<a class="zona" href="' + esc(waLink(msg, c.numero)) + '" target="_blank" rel="noopener" data-zona="' + esc(z) + '"><b>' + esc(z) + '</b><span>' + esc(c.nombre) + '</span></a>';
+      var cs = contactosPara(z); if (!cs.length) return "";
+      var inner = '<b>' + esc(z) + '</b><span>' + (cs.length > 1 ? cs.length + ' vendedores' : esc(cs[0].nombre)) + '</span>';
+      return cs.length > 1 ? '<button type="button" class="zona" data-dep="' + esc(z) + '">' + inner + '</button>' : waAnchor(z, cs[0], "zona", inner);
     }
-    var saved = zonaGuardada(), cs = saved && contactoPara(saved);
-    $("zonaSheet").innerHTML = '<button class="close" id="zClose" aria-label="Cerrar">×</button>' +
-      '<h2 id="zTitle">¿Desde qué departamento nos escribe?</h2>' +
-      '<p class="ctx">' + (zonaMaq ? 'Consulta por ' + esc(zonaMaq.modelo) + ' ' + esc(zonaMaq.anio || "") + '. ' : '') + 'Le responde el vendedor de su zona por WhatsApp.</p>' +
-      (cs ? '<div class="zona-saved"><p>Su zona: ' + esc(saved) + '<b>' + esc(cs.nombre) + '</b></p><a class="btn primary" data-zona="' + esc(saved) + '" href="' + esc(waLink(msg, cs.numero)) + '" target="_blank" rel="noopener">Escribir por WhatsApp <span class="chev" aria-hidden="true"></span></a></div>' : '') +
+    var z = leer("hp_zona"), cs = z ? contactosPara(z) : [], fijo = cs.find(function (c) { return c.id === leer("hp_vend"); }) || (cs.length === 1 ? cs[0] : null);
+    var saved = "";
+    if (fijo) saved = '<div class="zona-saved"><p>Su zona: ' + esc(z) + '<b>' + esc(fijo.nombre) + '</b></p>' + waAnchor(z, fijo, "btn primary", 'Escribir por WhatsApp <span class="chev" aria-hidden="true"></span>') + '</div>';
+    else if (cs.length > 1) saved = '<div class="zona-saved"><p>Su zona<b>' + esc(z) + '</b></p><button type="button" class="btn primary" data-dep="' + esc(z) + '">Ver vendedores</button></div>';
+    $("zonaSheet").innerHTML = cabecera("¿Desde qué departamento nos escribe?") + saved +
       '<div class="zona-region">Región Oriental</div><div class="zona-grid">' + ORIENTAL.map(item).join("") + '</div>' +
       '<div class="zona-region">Región Occidental (Chaco)</div><div class="zona-grid">' + CHACO.map(item).join("") + '</div>';
-    $("zonaOv").hidden = false; document.body.style.overflow = "hidden";
-    var first = $("zonaSheet").querySelector(".zona-saved a, .zona"); if (first) first.focus();
+    mostrar();
+  }
+  // Segundo paso: varios vendedores en el departamento elegido.
+  function openDep(z) {
+    guardar("hp_zona", z);
+    var cs = contactosPara(z);
+    $("zonaSheet").innerHTML = cabecera("Vendedores en " + esc(z)) +
+      '<div class="zona-grid">' + cs.map(function (c) { return waAnchor(z, c, "zona", '<b>' + esc(c.nombre) + '</b><span>WhatsApp</span>'); }).join("") + '</div>' +
+      '<div><button type="button" class="linkbtn" id="zBack">‹ Elegir otro departamento</button></div>';
+    mostrar();
   }
   function closeZona() { $("zonaOv").hidden = true; document.body.style.overflow = $("detailOv").hidden ? "" : "hidden"; }
   $("zonaOv").addEventListener("click", function (e) {
     if (e.target === $("zonaOv") || e.target.id === "zClose") return closeZona();
-    var a = e.target.closest("[data-zona]"); if (a) { guardarZona(a.dataset.zona); setTimeout(closeZona, 300); }
+    if (e.target.id === "zBack") return openZona(zonaMaq ? zonaMaq.id : "");
+    var d = e.target.closest("[data-dep]"); if (d) return openDep(d.dataset.dep);
+    var a = e.target.closest("a[data-zona]");
+    if (a) { guardar("hp_zona", a.dataset.zona); guardar("hp_vend", a.dataset.vend); setTimeout(closeZona, 300); }
   });
   document.addEventListener("click", function (e) { var b = e.target.closest("button[data-wa]"); if (b) { e.stopPropagation(); openZona(b.dataset.wa); } }, true);
   function machineMsg(m) { return "Hola, me interesa el Case IH " + m.modelo + " " + m.anio + ((m.tipo || "Usado") === "Nuevo" ? " nuevo" : " usado") + " (ref. " + m.ref + ") del catálogo web. ¿Sigue disponible?"; }

@@ -157,20 +157,21 @@
   function renderVend(b) {
     if (!vendDraft) vendDraft = JSON.parse(JSON.stringify(config.vendedores || []));
     var deps = config.departamentos || [];
-    var dueño = {}; vendDraft.forEach(function (v, i) { (v.zonas || []).forEach(function (z) { if (dueño[z] === undefined) dueño[z] = i; }); });
-    var libres = deps.filter(function (d) { return dueño[d] === undefined; });
-    b.innerHTML = '<p class="muted" style="margin:0">Cuando un cliente toca WhatsApp en el catálogo, elige su departamento y le escribe al vendedor de esa zona. Un departamento sin vendedor va al WhatsApp central de Datos de contacto' + (config.whatsapp ? ' (' + esc(config.whatsapp) + ')' : ', que todavía no está cargado') + '.</p>' +
+    var cuantos = {}; vendDraft.forEach(function (v) { (v.zonas || []).forEach(function (z) { cuantos[z] = (cuantos[z] || 0) + 1; }); });
+    var libres = deps.filter(function (d) { return !cuantos[d]; });
+    b.innerHTML = '<p class="muted" style="margin:0">Cuando un cliente toca WhatsApp en el catálogo, elige su departamento y le escribe al vendedor de esa zona. Si un departamento tiene varios vendedores, el cliente elige con quién hablar. Un departamento sin vendedor va al WhatsApp central de Datos de contacto' + (config.whatsapp ? ' (' + esc(config.whatsapp) + ')' : ', que todavía no está cargado') + '.</p>' +
       vendDraft.map(function (v, i) {
         return '<div class="vend" data-i="' + i + '"><div class="top2 form">' +
           '<label>Nombre<input class="field" data-f="nombre" value="' + esc(v.nombre) + '" placeholder="Ej.: Juan Benítez"></label>' +
           '<label>WhatsApp<input class="field" data-f="whatsapp" inputmode="tel" value="' + esc(v.whatsapp) + '" placeholder="+595 981 123 456"></label>' +
           '<button class="btn ghost" type="button" data-quitar="' + i + '">Quitar</button></div>' +
           '<div class="deps">' + deps.map(function (d) {
-            var mio = (v.zonas || []).indexOf(d) >= 0, otro = !mio && dueño[d] !== undefined;
-            return '<label class="' + (otro ? "taken" : "") + '" title="' + (otro ? "Ya asignado a " + esc(vendDraft[dueño[d]].nombre || "otro vendedor") : "") + '"><input type="checkbox" data-zona="' + esc(d) + '"' + (mio ? " checked" : "") + '> ' + esc(d) + '</label>';
+            var mio = (v.zonas || []).indexOf(d) >= 0;
+            return '<label><input type="checkbox" data-zona="' + esc(d) + '"' + (mio ? " checked" : "") + '> ' + esc(d) + '</label>';
           }).join("") + '</div></div>';
       }).join("") +
-      '<div class="cover-sum">' + (libres.length ? 'Sin vendedor (van al número central): ' + libres.map(esc).join(", ") : 'Todos los departamentos tienen vendedor.') + '</div>' +
+      '<div class="cover-sum">' + (libres.length ? 'Sin vendedor (van al número central): ' + libres.map(esc).join(", ") : 'Todos los departamentos tienen al menos un vendedor.') +
+        (deps.some(function (d) { return cuantos[d] > 1; }) ? '<br>Con varios vendedores (el cliente elige): ' + deps.filter(function (d) { return cuantos[d] > 1; }).map(function (d) { return esc(d) + ' (' + cuantos[d] + ')'; }).join(", ") : '') + '</div>' +
       '<div class="bar"><button class="btn" id="vAdd">+ Agregar vendedor</button><button class="btn primary" id="vSave">Guardar vendedores</button></div>';
   }
   $("body").addEventListener("input", function (e) {
@@ -181,7 +182,7 @@
     if (tab !== "vend" || !e.target.dataset.zona) return;
     var v = vendDraft[+e.target.closest(".vend").dataset.i], z = e.target.dataset.zona;
     v.zonas = (v.zonas || []).filter(function (x) { return x !== z; });
-    if (e.target.checked) { vendDraft.forEach(function (o) { o.zonas = (o.zonas || []).filter(function (x) { return x !== z; }); }); v.zonas.push(z); }
+    if (e.target.checked) v.zonas.push(z);
     renderVend($("body"));
   });
   $("body").addEventListener("click", function (e) {

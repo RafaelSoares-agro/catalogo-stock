@@ -19,7 +19,7 @@ Página pública con el stock de máquinas nuevas y usadas (foto, modelo, año, 
 
 ## WhatsApp por zona
 
-En `/admin → Vendedores` se carga cada vendedor con su WhatsApp y se marcan los departamentos que atiende (cada departamento tiene un solo vendedor). En el catálogo, el botón WhatsApp abre la lista de departamentos y el cliente le escribe al vendedor de su zona, con el mensaje de la máquina ya escrito. La zona elegida se recuerda en ese navegador. Los departamentos sin vendedor van al WhatsApp central de *Datos de contacto*. Sin vendedores cargados, el botón va directo al número central.
+En `/admin → Vendedores` se carga cada vendedor con su WhatsApp y se marcan los departamentos que atiende (un departamento puede tener varios vendedores). En el catálogo, el botón WhatsApp abre la lista de departamentos; si la zona tiene varios vendedores, el cliente elige con cuál hablar, con el mensaje de la máquina ya escrito. La zona elegida se recuerda en ese navegador. Los departamentos sin vendedor van al WhatsApp central de *Datos de contacto*. Sin vendedores cargados, el botón va directo al número central.
 
 ## API
 
