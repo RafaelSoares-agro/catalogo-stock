@@ -267,16 +267,14 @@
     if (m.anio) l.push("Año: " + m.anio);
     if (m.horas) l.push("Horas: " + num(m.horas) + " h");
     l.push(m.precio ? "Precio: " + (m.moneda || "USD") + " " + num(m.precio) : "Precio: consultar");
-    if (config.whatsapp) l.push("", "Consultas por WhatsApp: " + config.whatsapp);
-    if ((config.vendedores || []).length) l.push("O escriba al vendedor de su zona desde la web.");
-    l.push("Ver más en " + location.origin + "/#maquina-" + m.id);
+    l.push("", "Ver más en " + location.origin + "/#maquina-" + m.id);
     l.push("", "#CaseIH #" + String(config.empresa || "HPetersen").replace(/[^A-Za-z0-9]/g, "") + " #" + (m.categoria || "Maquinaria") + " #Paraguay");
     return l.join("\n");
   }
   function dibujarFlyer() {
     $("flyNote").textContent = "Generando…";
     return Flyer.render($("flyCanvas"), flyM, config, flyFmt).then(function () {
-      $("flyNote").textContent = (flyM.fotos && flyM.fotos.length ? "" : "La máquina no tiene foto: el flyer usa un fondo provisorio. ") + (config.whatsapp ? "" : "Falta el WhatsApp en Datos de contacto.");
+      $("flyNote").textContent = (flyM.fotos && flyM.fotos.length ? "" : "La máquina no tiene foto: el flyer usa un fondo provisorio. ") + "";
     });
   }
   function abrirFlyer(m) {

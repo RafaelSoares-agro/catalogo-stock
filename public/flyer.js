@@ -152,16 +152,13 @@
       var cx = P, cy = H - bh / 2;
       ctx.lineWidth = 8; ctx.strokeStyle = "#fff"; ctx.lineJoin = "miter";
       [0, 22].forEach(function (dx) { ctx.beginPath(); ctx.moveTo(cx + dx, cy - 18); ctx.lineTo(cx + dx + 16, cy); ctx.lineTo(cx + dx, cy + 18); ctx.stroke(); });
-      ctx.font = font(400, 30); ctx.fillText(cfg.whatsapp ? "CONSULTE POR WHATSAPP" : "ELIJA EL VENDEDOR DE SU ZONA EN", P + 64, cy - 14);
+      // Sin número: cada vendedor comparte el flyer desde su propio WhatsApp.
+      ctx.font = font(400, 30); ctx.fillText("CONSULTE CON SU VENDEDOR", P + 64, cy - 14);
       ctx.font = font(700, F.wa);
-      var hayVend = (cfg.vendedores || []).length > 0;
-      var principal = cfg.whatsapp || (hayVend ? (location.host || "").toUpperCase() : "Cargar número en Datos de contacto");
-      ctx.fillText(principal, P + 64, cy + (formato === "historia" ? 44 : 38));
-      ctx.textAlign = "right"; ctx.font = font(400, 24); ctx.globalAlpha = 0.85;
-      if (cfg.whatsapp) {
-        ctx.fillText((location.host || "").toUpperCase(), W - P, cy + (formato === "historia" ? 44 : 38));
-        if (hayVend) ctx.fillText("VENDEDORES EN TODO EL PAÍS", W - P, cy - 14);
-      }
+      ctx.fillText((cfg.empresa || "H.Petersen").toUpperCase(), P + 64, cy + (formato === "historia" ? 44 : 38));
+      ctx.textAlign = "right"; ctx.font = font(400, 26); ctx.globalAlpha = 0.85;
+      ctx.fillText("CONCESIONARIO CASE IH", W - P, cy - 14);
+      ctx.fillText((location.host || "").toUpperCase(), W - P, cy + (formato === "historia" ? 44 : 38));
       ctx.globalAlpha = 1; ctx.textAlign = "left";
       return canvas;
     });
