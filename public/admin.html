@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Administrar stock | H.Petersen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700&family=Barlow:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/styles.css">
+<style>
+  .adm { max-width: 900px; margin: 0 auto; padding-block: 24px 64px; padding-left: var(--gutter-l); padding-right: var(--gutter-r); display: flex; flex-direction: column; gap: 14px; }
+  .adm h1 { margin: 0; font-family: var(--display); font-weight: 700; text-transform: uppercase; font-size: 30px; letter-spacing: .03em; }
+  .bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: space-between; }
+  .login { max-width: 420px; display: flex; flex-direction: column; gap: 10px; }
+  .err { color: var(--red-hi); font-size: 14px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/"><span class="mark">H.Petersen</span><span class="sub">Administrar stock</span></a>
+    <div class="top-actions"><a class="btn ghost" href="/" target="_blank" rel="noopener">Ver catálogo</a><button class="btn" id="logout" hidden>Salir</button></div>
+  </div>
+</header>
+
+<div class="adm" id="app">
+  <form class="login form" id="login" style="grid-template-columns:1fr">
+    <h1>Ingresar</h1>
+    <label>Clave de administración<input class="field" id="token" type="password" autocomplete="current-password" required></label>
+    <span class="hint">Es el valor de ADMIN_TOKEN configurado en Netlify.</span>
+    <button class="btn primary" type="submit">Entrar</button>
+    <span class="err" id="loginErr"></span>
+  </form>
+
+  <div id="panel" hidden>
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tabList" aria-selected="true">Máquinas</button>
+      <button role="tab" id="tabConf" aria-selected="false">Datos de contacto</button>
+    </div>
+    <div id="body" style="display:flex;flex-direction:column;gap:12px;padding-top:16px"></div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function () {
+  "use strict";
+  var CATS = ["Tractor", "Cosechadora", "Pulverizadora", "Sembradora", "Otro"];
+  var ESTADOS = { disponible: "Disponible", reservado: "Reservado", vendido: "Vendido" };
+  var $ = function (id) { return document.getElementById(id); };
+  var token = "", lista = [], config = {}, tab = "list", editing = null, confirmDel = null, busy = false;
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function num(n) { return (Number(n) || 0).toLocaleString("es-PY"); }
+  function toast(m) { var t = $("toast"); t.textContent = m; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(function () { t.hidden = true; }, 4000); }
+
+  function api(method, path, body, raw) {
+    var opts = { method: method, headers: { authorization: "Bearer " + token } };
+    if (body !== undefined) {
+      if (raw) { opts.body = body; opts.headers["content-type"] = body.type; }
+      else { opts.body = JSON.stringify(body); opts.headers["content-type"] = "application/json"; }
+    }
+    return fetch(path, opts).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (d) {
+        if (r.status === 401) { logout(); throw new Error("La clave no es válida."); }
+        if (!r.ok) throw new Error((d.error || "Error " + r.status) + (d.detalle ? ": " + [].concat(d.detalle).map(function (x) { return typeof x === "string" ? x : JSON.stringify(x); }).join(", ") : ""));
+        return d;
+      });
+    });
+  }
+
+  function load() {
+    return Promise.all([api("GET", "/api/maquinas?todas=1"), api("GET", "/api/config")]).then(function (r) { lista = r[0]; config = r[1]; render(); });
+  }
+  $("login").addEventListener("submit", function (e) {
+    e.preventDefault(); token = $("token").value.trim(); $("loginErr").textContent = "";
+    load().then(function () {
+      try { sessionStorage.setItem("hp_token", token); } catch (x) { }
+      $("login").hidden = true; $("panel").hidden = false; $("logout").hidden = false;
+    }, function (err) { $("loginErr").textContent = err.message; });
+  });
+  function logout() { token = ""; try { sessionStorage.removeItem("hp_token"); } catch (x) { } $("panel").hidden = true; $("login").hidden = false; $("logout").hidden = true; }
+  $("logout").addEventListener("click", logout);
+  try { var saved = sessionStorage.getItem("hp_token"); if (saved) { $("token").value = saved; $("login").requestSubmit(); } } catch (x) { }
+
+  $("tabList").addEventListener("click", function () { tab = "list"; editing = null; render(); });
+  $("tabConf").addEventListener("click", function () { tab = "conf"; editing = null; render(); });
+
+  function thumb(m) { return m.fotos && m.fotos[0] ? '<img src="' + esc(m.fotos[0]) + '" alt="">' : ""; }
+
+  function render() {
+    $("tabList").setAttribute("aria-selected", tab === "list"); $("tabConf").setAttribute("aria-selected", tab === "conf");
+    var b = $("body");
+    if (tab === "conf") return renderConf(b);
+    if (editing) return renderEditor(b);
+    var rows = lista.slice().sort(function (a, c) { return String(c.actualizado || "").localeCompare(String(a.actualizado || "")); });
+    b.innerHTML = '<div class="bar"><span class="muted">' + rows.length + ' máquinas cargadas</span><button class="btn primary" id="addBtn">+ Nueva máquina</button></div>' +
+      (rows.length ? rows.map(function (m) {
+        return '<div class="adm-row"><div class="th">' + thumb(m) + '</div><div><b>' + esc(m.modelo) + ' · ' + esc(m.anio || "") + '</b><span class="muted">' + esc(m.ref) + ' · ' + esc(m.tipo) + ' · ' + esc(ESTADOS[m.estado]) + ' · ' + (m.precio ? esc(m.moneda) + ' ' + num(m.precio) : 'Consultar') + '</span></div>' +
+          '<div class="acts">' + (confirmDel === m.id
+            ? '<span class="confirm">¿Eliminar?<button class="btn primary" data-del-yes="' + esc(m.id) + '">Sí</button><button class="btn" data-del-no="1">No</button></span>'
+            : '<button class="btn" data-edit="' + esc(m.id) + '">Editar</button><button class="btn ghost" data-del="' + esc(m.id) + '">Eliminar</button>') + '</div></div>';
+      }).join("") : '<div class="empty"><b>Sin máquinas</b>Cargue la primera con “Nueva máquina”.</div>');
+  }
+  $("body").addEventListener("click", function (e) {
+    var t = e.target;
+    if (t.id === "addBtn") { editing = { tipo: "Usado", categoria: "Tractor", modelo: "", ref: "", anio: new Date().getFullYear(), horas: 0, precio: 0, moneda: "USD", estado: "disponible", destacado: false, fotos: [] }; return render(); }
+    if (t.dataset.edit) { editing = JSON.parse(JSON.stringify(lista.find(function (x) { return x.id === t.dataset.edit; }))); return render(); }
+    if (t.dataset.del) { confirmDel = t.dataset.del; return render(); }
+    if (t.dataset.delNo) { confirmDel = null; return render(); }
+    if (t.dataset.delYes) {
+      api("DELETE", "/api/maquinas/" + encodeURIComponent(t.dataset.delYes)).then(function () { confirmDel = null; toast("Máquina eliminada."); return load(); }, function (err) { toast(err.message); });
+    }
+  });
+
+  function renderConf(b) {
+    var c = config;
+    b.innerHTML = '<form class="form" id="confForm">' +
+      '<label class="full">Nombre de la empresa<input class="field" id="cfEmpresa" value="' + esc(c.empresa) + '"></label>' +
+      '<label class="full">Subtítulo<input class="field" id="cfSub" value="' + esc(c.subtitulo) + '"></label>' +
+      '<label>WhatsApp de ventas<input class="field" id="cfWa" inputmode="tel" placeholder="+595 981 123 456" value="' + esc(c.whatsapp) + '"><span class="hint">Con código de país. Lo usan los botones de consulta.</span></label>' +
+      '<label>Teléfono<input class="field" id="cfTel" inputmode="tel" value="' + esc(c.telefono) + '"></label>' +
+      '<label class="full">Correo<input class="field" id="cfMail" type="email" value="' + esc(c.email) + '"></label>' +
+      '<label class="full">Aviso en la portada<input class="field" id="cfAviso" value="' + esc(c.aviso) + '"><span class="hint">Déjelo vacío para ocultarlo.</span></label>' +
+      '<div class="full"><button class="btn primary" type="submit">Guardar</button></div></form>';
+    $("confForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      api("PUT", "/api/config", { empresa: $("cfEmpresa").value, subtitulo: $("cfSub").value, whatsapp: $("cfWa").value, telefono: $("cfTel").value, email: $("cfMail").value, aviso: $("cfAviso").value })
+        .then(function (d) { config = d; toast("Datos guardados."); }, function (err) { toast(err.message); });
+    });
+  }
+
+  function renderEditor(b) {
+    var m = editing;
+    function opts(list, cur) { return list.map(function (v) { return '<option' + (v === cur ? ' selected' : '') + '>' + v + '</option>'; }).join(""); }
+    b.innerHTML = '<div><button class="linkbtn" id="backBtn">‹ Volver a la lista</button></div>' +
+      '<form class="form" id="edForm">' +
+      '<label>Nuevo o usado<select class="field" id="fTipo">' + opts(["Usado", "Nuevo"], m.tipo) + '</select></label>' +
+      '<label>Categoría<select class="field" id="fCat">' + opts(CATS, m.categoria) + '</select></label>' +
+      '<label class="full">Modelo<input class="field" id="fModelo" required placeholder="Ej.: Puma 200" value="' + esc(m.modelo) + '"></label>' +
+      '<label>Ref. interna<input class="field" id="fRef" required placeholder="Código del portal de stock" value="' + esc(m.ref) + '"></label>' +
+      '<label>Año<input class="field" id="fAnio" type="number" min="1950" max="2100" value="' + esc(m.anio) + '"></label>' +
+      '<label>Horas<input class="field" id="fHoras" type="number" min="0" value="' + esc(m.horas) + '"></label>' +
+      '<label>Precio de venta<input class="field" id="fPrecio" type="number" min="0" step="100" value="' + esc(m.precio || "") + '"><span class="hint">Vacío muestra “Consultar”.</span></label>' +
+      '<label>Moneda<select class="field" id="fMon">' + opts(["USD", "Gs."], m.moneda) + '</select></label>' +
+      '<label>Estado<select class="field" id="fEst">' + Object.keys(ESTADOS).map(function (k) { return '<option value="' + k + '"' + (m.estado === k ? ' selected' : '') + '>' + ESTADOS[k] + '</option>'; }).join("") + '</select></label>' +
+      '<label class="inline full"><input type="checkbox" id="fDest"' + (m.destacado ? " checked" : "") + '> Mostrar primero (destacada)</label>' +
+      '<div class="full"><div class="eyebrow" style="font-size:14px;margin-bottom:8px">Fotos</div>' +
+      '<div class="photo-grid" id="pGrid">' + m.fotos.map(function (p, i) {
+        return '<figure><img src="' + esc(p) + '" alt=""><button type="button" class="x" data-rm="' + i + '" aria-label="Quitar foto">×</button>' +
+          (i === 0 ? '<span class="cover">Portada</span>' : '<button type="button" class="mk" data-cover="' + i + '">Hacer portada</button>') + '</figure>';
+      }).join("") + '</div>' +
+      '<div class="drop" id="drop" style="margin-top:8px">Arrastre fotos aquí o<label class="btn" style="cursor:pointer">Elegir fotos<input type="file" id="fFotos" accept="image/*" multiple hidden></label><span class="hint">Se reducen a 1600 px y se suben al guardar la foto.</span></div></div>' +
+      '<div class="full" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" type="submit" id="saveBtn">' + (m.id ? "Guardar cambios" : "Publicar máquina") + '</button><button class="btn ghost" type="button" id="cancelBtn">Cancelar</button></div>' +
+      '</form>';
+    function readForm() {
+      m.tipo = $("fTipo").value; m.categoria = $("fCat").value; m.modelo = $("fModelo").value.trim(); m.ref = $("fRef").value.trim();
+      m.anio = $("fAnio").value; m.horas = $("fHoras").value; m.precio = $("fPrecio").value; m.moneda = $("fMon").value;
+      m.estado = $("fEst").value; m.destacado = $("fDest").checked;
+    }
+    $("backBtn").addEventListener("click", function () { editing = null; render(); });
+    $("cancelBtn").addEventListener("click", function () { editing = null; render(); });
+    $("edForm").addEventListener("submit", function (e) {
+      e.preventDefault(); if (busy) return; readForm(); busy = true; $("saveBtn").disabled = true;
+      var p = m.id ? api("PUT", "/api/maquinas/" + encodeURIComponent(m.id), m) : api("POST", "/api/maquinas", m);
+      p.then(function () { toast(m.id ? "Cambios guardados. Ya se ven en el catálogo." : "Máquina publicada."); editing = null; return load(); },
+        function (err) { toast(err.message); }).then(function () { busy = false; var s = $("saveBtn"); if (s) s.disabled = false; });
+    });
+    $("fFotos").addEventListener("change", function (e) { readForm(); upload(e.target.files); });
+    var drop = $("drop");
+    drop.addEventListener("dragover", function (e) { e.preventDefault(); drop.classList.add("over"); });
+    drop.addEventListener("dragleave", function () { drop.classList.remove("over"); });
+    drop.addEventListener("drop", function (e) { e.preventDefault(); drop.classList.remove("over"); readForm(); upload(e.dataTransfer.files); });
+    $("pGrid").addEventListener("click", function (e) {
+      var t = e.target; readForm();
+      if (t.dataset.rm != null) { m.fotos.splice(+t.dataset.rm, 1); render(); }
+      if (t.dataset.cover != null) { m.fotos.unshift(m.fotos.splice(+t.dataset.cover, 1)[0]); render(); }
+    });
+  }
+
+  function resize(file) {
+    return new Promise(function (res, rej) {
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () {
+        var k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+        var c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth * k); c.height = Math.round(img.naturalHeight * k);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+        c.toBlob(function (b) { b ? res(b) : rej(new Error("No se pudo procesar " + file.name)); }, "image/jpeg", 0.82);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); rej(new Error("No se pudo leer " + file.name)); };
+      img.src = url;
+    });
+  }
+  function upload(files) {
+    var list = Array.prototype.filter.call(files || [], function (f) { return /^image\//.test(f.type); });
+    if (!list.length) return;
+    toast("Subiendo " + list.length + (list.length === 1 ? " foto…" : " fotos…"));
+    var target = editing;
+    list.reduce(function (p, f) {
+      return p.then(function () { return resize(f).then(function (blob) { return api("POST", "/api/fotos", blob, true); }).then(function (d) { target.fotos.push(d.url); }, function (err) { toast(err.message); }); });
+    }, Promise.resolve()).then(function () { if (editing === target) render(); toast("Fotos listas. Guarde la máquina para publicarlas."); });
+  }
+})();
+</script>
+</body>
+</html>

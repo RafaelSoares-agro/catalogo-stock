@@ -1,0 +1,13 @@
+{
+  "name": "catalogo-stock",
+  "private": true,
+  "type": "module",
+  "description": "Catálogo público de stock Case IH de H.Petersen con API en Netlify Functions",
+  "scripts": {
+    "dev": "netlify dev",
+    "test": "node test/api.test.mjs"
+  },
+  "dependencies": {
+    "@netlify/blobs": "11.1.6"
+  }
+}
